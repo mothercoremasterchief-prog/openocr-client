@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# TypeScript / Node
+node_modules/
+dist/
+*.js.map
+.tsbuildinfo
+
+# Env
+.env
+.env.local
+
+# Editors
+.vscode/
+.idea/
+*.swp
