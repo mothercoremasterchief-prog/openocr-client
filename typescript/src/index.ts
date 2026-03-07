@@ -1,17 +1,15 @@
 export { OpenOCR } from "./client";
 export {
-  OpenOCRError,
   AuthenticationError,
-  RateLimitError,
+  EngineError,
   InsufficientBalanceError,
-} from "./types";
-export type {
-  OcrResult,
-  OcrOptions,
-  OcrInput,
-  OcrRequest,
-  JobStatus,
-  JobStatusResponse,
   JobResultResponse,
+  JobStatusResponse,
+  OcrOptions,
+  OcrResult,
+  OpenOCRError,
   OpenOCROptions,
+  Page,
+  RateLimitError,
+  splitPages,
 } from "./types";

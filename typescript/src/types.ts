@@ -9,6 +9,15 @@ export interface OcrRequest {
   engine: string;
   input: OcrInput;
   options?: Record<string, unknown>;
+  fallback_engine?: string;
+  scanned_handling?: string;
+}
+
+export interface Page {
+  /** 1-indexed page number. */
+  number: number;
+  /** Extracted text for this page. */
+  text: string;
 }
 
 export interface OcrResult {
@@ -26,6 +35,19 @@ export interface OcrResult {
   stopReason?: string;
   remainingPages?: number;
   affordablePages?: number;
+}
+
+/**
+ * Split extracted text into per-page objects (split on form-feed).
+ */
+export function splitPages(extractedText: string | null): Page[] {
+  if (!extractedText) return [];
+  const raw = extractedText.split("\f");
+  // Strip trailing empty page from trailing form-feed
+  if (raw.length > 0 && raw[raw.length - 1].trim() === "") {
+    raw.pop();
+  }
+  return raw.map((text, i) => ({ number: i + 1, text }));
 }
 
 export type JobStatus = "processing" | "succeeded" | "failed";
@@ -54,6 +76,8 @@ export interface OpenOCROptions {
   apiKey: string;
   baseUrl?: string;
   timeoutMs?: number;
+  /** Number of retries for transient errors (default: 3). */
+  maxRetries?: number;
 }
 
 export interface OcrOptions {
@@ -63,6 +87,10 @@ export interface OcrOptions {
   dataBase64?: string;
   mimeType?: string;
   options?: Record<string, unknown>;
+  /** Engine to use for scanned/image pages in PDFs. */
+  fallbackEngine?: string;
+  /** How to handle scanned pages: "fallback", "skip", or "error". */
+  scannedHandling?: string;
   /** If true (default), wait for async jobs to complete before returning. */
   wait?: boolean;
   pollIntervalMs?: number;
@@ -98,5 +126,12 @@ export class InsufficientBalanceError extends OpenOCRError {
   constructor(message = "Insufficient balance") {
     super(message, 402, "insufficient_balance");
     this.name = "InsufficientBalanceError";
+  }
+}
+
+export class EngineError extends OpenOCRError {
+  constructor(message = "Engine processing error") {
+    super(message, 422, "engine_error");
+    this.name = "EngineError";
   }
 }
