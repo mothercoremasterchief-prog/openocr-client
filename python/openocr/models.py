@@ -1,9 +1,21 @@
 """OpenOCR response models."""
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+
+
+@dataclass
+class Page:
+    """A single page extracted from an OCR result."""
+
+    number: int  # 1-indexed page number
+    text: str  # Extracted text for this page
+
+    def __repr__(self) -> str:
+        preview = self.text[:60] + "..." if len(self.text) > 60 else self.text
+        return f"Page(number={self.number}, text={preview!r})"
 
 
 @dataclass
@@ -49,6 +61,26 @@ class OcrResult:
     @property
     def is_async(self) -> bool:
         return self.status == "processing" and self.job_id is not None
+
+    @property
+    def text(self) -> str:
+        """Convenience: full extracted text or empty string."""
+        return self.extracted_text or ""
+
+    @property
+    def pages(self) -> list[Page]:
+        """Split extracted_text into per-page Page objects (split on form-feed).
+
+        Many OCR engines separate pages with form-feed (\\f) characters.
+        This property parses them into typed Page objects for easy access.
+        """
+        if not self.extracted_text:
+            return []
+        raw_pages = self.extracted_text.split("\f")
+        # Strip trailing empty page from trailing form-feed
+        if raw_pages and raw_pages[-1].strip() == "":
+            raw_pages = raw_pages[:-1]
+        return [Page(number=i + 1, text=p) for i, p in enumerate(raw_pages)]
 
 
 class JobStatus(str, Enum):
