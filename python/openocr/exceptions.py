@@ -24,3 +24,7 @@ class InsufficientBalanceError(OpenOCRError):
 
 class NotFoundError(OpenOCRError):
     """Raised when a resource (e.g. async job) is not found."""
+
+
+class EngineError(OpenOCRError):
+    """Raised when the OCR engine fails to process the document (HTTP 422)."""
