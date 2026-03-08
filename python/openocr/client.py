@@ -19,6 +19,7 @@ from .exceptions import (
     RateLimitError,
 )
 from .models import JobResultResponse, JobStatus, JobStatusResponse, OcrResult
+from .streaming import StreamEvent, StreamEventType, stream_ocr_sync
 
 DEFAULT_BASE_URL = "https://api.open-ocr.com"
 DEFAULT_TIMEOUT = 60.0
@@ -131,6 +132,94 @@ class OpenOCR:
         """Fetch the result of a completed async job."""
         resp = self._request("GET", f"/v1/ocr/jobs/{job_id}/result")
         return JobResultResponse.from_dict(self._handle(resp))
+
+    def stream(
+        self,
+        engine: str,
+        *,
+        file: Optional[str | Path] = None,
+        url: Optional[str] = None,
+        data_base64: Optional[str] = None,
+        mime_type: str = "application/pdf",
+        options: Optional[dict] = None,
+        fallback_engine: Optional[str] = None,
+        scanned_handling: Optional[str] = None,
+        poll_interval: float = 1.0,
+        webhook_url: Optional[str] = None,
+    ) -> "Iterator[StreamEvent]":
+        """Stream OCR progress as events (sync generator).
+
+        Submits the job in async mode and yields StreamEvent objects as
+        pages complete. Use this for real-time progress tracking on large
+        documents.
+
+        Args:
+            engine: Engine ID, e.g. ``"openocr/tesseract"``.
+            file: Local file path.
+            url: Remote URL to a PDF or image.
+            data_base64: Pre-encoded base64 string.
+            mime_type: MIME type for base64 input.
+            options: Extra options passed to the API.
+            fallback_engine: Engine for scanned pages in PDFs.
+            scanned_handling: How to handle scanned pages.
+            poll_interval: Seconds between status polls (default: 1.0).
+            webhook_url: Optional webhook URL for completion notification.
+
+        Yields:
+            :class:`StreamEvent` objects: job_started, page_complete,
+            job_complete, or error.
+
+        Example::
+
+            for event in client.stream("openocr/tesseract", file="large.pdf"):
+                if event.type == StreamEventType.PAGE_COMPLETE:
+                    print(f"Page {event.page_number}/{event.total_pages}")
+                elif event.type == StreamEventType.JOB_COMPLETE:
+                    print(event.result.text)
+        """
+        from typing import Iterator
+
+        if file is not None:
+            data_base64, mime_type = self._read_file(file)
+
+        if data_base64 is not None:
+            input_payload = {"type": "base64", "data_base64": data_base64, "mime_type": mime_type}
+        elif url is not None:
+            input_payload = {"type": "url", "url": url}
+        else:
+            raise ValueError("Provide one of: file, url, or data_base64")
+
+        body: dict = {
+            "engine": engine,
+            "input": input_payload,
+            "mode": "async",
+        }
+        if options:
+            body["options"] = options
+        if fallback_engine:
+            body["fallback_engine"] = fallback_engine
+        if scanned_handling:
+            body["scanned_handling"] = scanned_handling
+        if webhook_url:
+            body["webhook_url"] = webhook_url
+
+        resp = self._request("POST", "/v1/ocr", json=body)
+        data = self._handle(resp)
+        result = OcrResult.from_dict(data)
+
+        if not result.job_id:
+            # Synchronous result — emit as single job_complete
+            yield StreamEvent(
+                type=StreamEventType.JOB_COMPLETE,
+                job_id=result.request_id,
+                result=result,
+                total_pages=1,
+                pages_completed=1,
+                progress_pct=100,
+            )
+            return
+
+        yield from stream_ocr_sync(self, result.job_id, poll_interval=poll_interval)
 
     def engines(self) -> list[dict]:
         """List all available OCR engines."""
