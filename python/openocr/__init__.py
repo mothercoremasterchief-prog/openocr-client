@@ -9,6 +9,8 @@ from .exceptions import (
     RateLimitError,
 )
 from .models import JobResultResponse, JobStatus, JobStatusResponse, OcrResult, Page
+from .streaming import StreamEvent, StreamEventType
+from .webhooks import WebhookEvent, construct_signature, verify_signature
 
 __all__ = [
     "OpenOCR",
@@ -17,10 +19,15 @@ __all__ = [
     "JobStatus",
     "JobStatusResponse",
     "JobResultResponse",
+    "StreamEvent",
+    "StreamEventType",
+    "WebhookEvent",
+    "verify_signature",
+    "construct_signature",
     "OpenOCRError",
     "AuthenticationError",
     "EngineError",
     "InsufficientBalanceError",
     "RateLimitError",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

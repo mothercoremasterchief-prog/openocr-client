@@ -10,6 +10,7 @@ import {
   OpenOCROptions,
   RateLimitError,
 } from "./types";
+import { StreamEvent, StreamOptions, streamJob } from "./streaming";
 
 const DEFAULT_BASE_URL = "https://api.open-ocr.com";
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -95,6 +96,75 @@ export class OpenOCR {
       extractedText: raw.extracted_text as string | undefined,
       error: raw.error as string | undefined,
     };
+  }
+
+  /**
+   * Stream OCR progress as async iterable events.
+   *
+   * Submits the job in async mode and yields StreamEvent objects as
+   * pages complete. Use this for real-time progress tracking on large
+   * documents.
+   *
+   * @example
+   * ```typescript
+   * for await (const event of client.stream({ engine: "openocr/tesseract", url: "..." })) {
+   *   if (event.type === "page_complete") {
+   *     console.log(`Page ${event.pageNumber}/${event.totalPages}`);
+   *   } else if (event.type === "job_complete") {
+   *     console.log(event.result?.extractedText);
+   *   }
+   * }
+   * ```
+   */
+  async *stream(opts: StreamOptions): AsyncGenerator<StreamEvent> {
+    const {
+      engine,
+      url,
+      dataBase64,
+      mimeType = "application/pdf",
+      options,
+      fallbackEngine,
+      scannedHandling,
+      pollIntervalMs = 1000,
+      webhookUrl,
+    } = opts;
+
+    let input: Record<string, string>;
+    if (dataBase64 != null) {
+      input = { type: "base64", data_base64: dataBase64, mime_type: mimeType };
+    } else if (url != null) {
+      input = { type: "url", url };
+    } else {
+      throw new OpenOCRError("Provide one of: url or dataBase64");
+    }
+
+    const body: Record<string, unknown> = { engine, input, mode: "async" };
+    if (options) body.options = options;
+    if (fallbackEngine) body.fallback_engine = fallbackEngine;
+    if (scannedHandling) body.scanned_handling = scannedHandling;
+    if (webhookUrl) body.webhook_url = webhookUrl;
+
+    const raw = await this._fetch("/v1/ocr", { method: "POST", body: JSON.stringify(body) });
+    const result = this._toOcrResult(raw);
+
+    if (!result.jobId) {
+      // Synchronous result — emit as single job_complete
+      yield {
+        type: "job_complete",
+        jobId: result.requestId,
+        result,
+        totalPages: 1,
+        pagesCompleted: 1,
+        progressPct: 100,
+      };
+      return;
+    }
+
+    yield* streamJob(
+      (path, init) => this._fetch(path, init),
+      result.jobId,
+      pollIntervalMs
+    );
   }
 
   /** List available OCR engines. */
